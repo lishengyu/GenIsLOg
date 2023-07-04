@@ -37,6 +37,7 @@ type logRecord struct {
 	sep      Bytes
 	content  Bytes
 	filename string
+	newfile  string
 	mode     int
 	command  string
 	valid    bool
@@ -186,14 +187,13 @@ func getCommandRecord() {
 		}
 
 		if !fi.IsDir() {
-			fn := fi.Name()
-			path := sPath + "/" + fn
+			// 嵌套路径需要考虑，使用path
 			isPeriod := isFileTimeValid(path)
 			if !isPeriod {
 				return nil
 			} else {
 				// read file content && find command id && return
-				flag = parseIsLogFile(fn)
+				flag = parseIsLogFile(path)
 				if flag {
 					//找到符合条件的记录，不继续遍历
 					return ErrStopIteration
@@ -224,6 +224,7 @@ func printOriginCommandRecord() {
 	splitStr := strings.Repeat("=", 64)
 	fmt.Println(splitStr)
 	fmt.Printf("filename: %s\n", originRecord.filename)
+	fmt.Printf("newfile : %s\n", originRecord.newfile)
 	if originRecord.mode == CTCC_TYPE {
 		fmt.Printf("oprator: ctcc\n")
 	} else {
@@ -250,6 +251,13 @@ func uint32ToBytes(n uint32) []byte {
 	return bytesBuffer.Bytes()
 }
 
+func uint64ToBytes(n uint64) []byte {
+	bytesBuffer := bytes.NewBuffer([]byte{})
+	binary.Write(bytesBuffer, binary.BigEndian, n)
+
+	return bytesBuffer.Bytes()
+}
+
 func genRandomPort() []byte {
 	min := 10000
 	max := 55555
@@ -262,6 +270,26 @@ func genRandomPort() []byte {
 }
 
 func genRandomTime() []byte {
+	timelayout := "20060102150405"
+
+	//加载CST时区
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		fmt.Printf("load CST location failed:%v\n", err)
+	}
+
+	st, err := time.ParseInLocation(timelayout, sTime, location)
+	if err != nil {
+		fmt.Printf("parse sTime failed:%v\n", err)
+	}
+	et, err := time.ParseInLocation(timelayout, eTime, location)
+	if err != nil {
+		fmt.Printf("parse sTime failed:%v\n", err)
+	}
+
+	min := st.Unix()
+	max := et.Unix()
+
 	/*
 		min, err := strconv.ParseUint(sTime, 10, 64)
 		if err != nil {
@@ -272,19 +300,7 @@ func genRandomTime() []byte {
 			fmt.Printf("convert etime err:%v\n", err)
 		}
 	*/
-	timelayout := "20060102150405"
 
-	st, err := time.Parse(timelayout, sTime)
-	if err != nil {
-		fmt.Printf("parse sTime failed:%v\n", err)
-	}
-	et, err := time.Parse(timelayout, eTime)
-	if err != nil {
-		fmt.Printf("parse sTime failed:%v\n", err)
-	}
-
-	min := st.Unix()
-	max := et.Unix()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	randomNum := uint32(r.Intn(int(max-min+1))) + uint32(min)
@@ -445,12 +461,19 @@ func getNewFp() string {
 	//原始文件名
 	oldfn := originRecord.filename
 
+	var basename string
+	index := strings.LastIndex(oldfn, "/")
+	if index > -1 {
+		basename = oldfn[index+1:]
+	} else {
+		basename = oldfn
+	}
+
 	var newfn string
-	fs := strings.Split(oldfn, "_")
+	fs := strings.Split(basename, "_")
 	if len(fs) < 4 {
 		return ""
 	}
-
 	for i, v := range fs {
 		if i == 0 {
 			newfn = v
@@ -497,6 +520,7 @@ func genIsLog() string {
 		fd.Write(ctx)
 	}
 
+	originRecord.newfile = fn
 	return fn
 }
 
@@ -552,6 +576,10 @@ func paramCheck() bool {
 			return false
 		}
 	*/
+
+	//剔除最后路径下的分隔符
+	sPath = strings.TrimSuffix(sPath, "/")
+	dPath = strings.TrimSuffix(dPath, "/")
 
 	return true
 }
