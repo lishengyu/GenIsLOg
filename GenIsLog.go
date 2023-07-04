@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ var (
 	logNum int
 	sPath  string
 	dPath  string
+	sPort  int
 	debug  bool
 )
 
@@ -44,6 +46,7 @@ type logRecord struct {
 }
 
 var originRecord logRecord
+var portMap sync.Map
 
 var ErrStopIteration = errors.New("find record && stop iteration")
 
@@ -269,6 +272,39 @@ func genRandomPort() []byte {
 	return uint16ToBytes(uint16(randomNum))
 }
 
+func genRandomPortInt() uint16 {
+	min := 10000
+	max := 55555
+
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	randomNum := r.Intn(max-min+1) + min
+
+	return uint16(randomNum)
+}
+
+func getOnlyRandomPort() []byte {
+	var port uint16
+	for i := 0; i < 10; i++ {
+		port = genRandomPortInt()
+		if _, ok := portMap.Load(port); !ok {
+			portMap.Store(port, 1)
+			return uint16ToBytes(port)
+		}
+	}
+	fmt.Printf("generate same random port over 10 times, use the last port:%d!!\n", port)
+	return uint16ToBytes(port)
+}
+
+var portIndex uint16
+
+func getIncreasePort() []byte {
+	gPort := uint16(sPort) + portIndex
+	portIndex++
+
+	return uint16ToBytes(gPort)
+}
+
 func genRandomTime() []byte {
 	timelayout := "20060102150405"
 
@@ -438,7 +474,15 @@ func calcTimeOffset() int {
 }
 
 func genIsRecord(offset1, offset2 int) []byte {
-	port := genRandomPort()
+	var port []byte
+	//sport生成的两种方式
+	if sPort != 0 {
+		//以设置的起始port开始递增
+		port = getIncreasePort()
+	} else {
+		//在指定范围内开始随机去重
+		port = getOnlyRandomPort()
+	}
 	time := genRandomTime()
 	content := originRecord.content
 
@@ -611,6 +655,7 @@ func main() {
 	flag.IntVar(&logNum, "lognum", 0, "set log num, the num of log need to generate")
 	flag.StringVar(&sPath, "spath", "./", "src path")
 	flag.StringVar(&dPath, "dpath", "./", "dest path")
+	flag.IntVar(&sPort, "sport", 0, "set start port, the start port to increase")
 	flag.BoolVar(&debug, "debug", false, "see more debug information")
 	flag.Parse()
 
