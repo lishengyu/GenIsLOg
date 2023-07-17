@@ -88,9 +88,9 @@ func procIsLineContent(line []byte) bool {
 			originRecord.valid = true
 		}
 	} else {
-		commandA := string(line[12:22])
+		commandA := string(bytes.Trim(line[12:22], string(0)))
 		if debug {
-			fmt.Printf("command mode: str, comman param:%s, command search:%v, record:%v\n", comId, commandA, line)
+			fmt.Printf("command mode: str, comman param:%s(%d), command search:%s(%d), record:%v\n", comId, len(comId), commandA, len(commandA), line)
 		}
 		if commandA == comId {
 			originRecord.content = line
